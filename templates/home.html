@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="row">
+    {% if current_user.is_authenticated %}
+        <div class="col-md-12 text-end">
+            <p class="fw-bold">Добро пожаловать, {{ current_user.full_name.split(' ')[0] }} {{ current_user.full_name.split(' ')[1][0] }}.{{ current_user.full_name.split(' ')[2][0] }}.</p>
+        </div>
+    {% else %}
+        <div class="col-md-8">
+            <h1>Добро пожаловать!</h1>
+            <p>Войдите в систему или зарегистрируйтесь, чтобы получить доступ к сервису.</p>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="text-center mb-4">Авторизация</h2>
+                    <form method="POST" action="{{ url_for('login') }}">
+                        <div class="mb-3">
+                            <label for="username" class="form-label">Номер свидетельства о смерти</label>
+                            <input type="text" id="username" name="username" class="form-control" required>
+                        </div>
+                        <div class="mb-3">
+                            <label for="password" class="form-label">Пароль</label>
+                            <input type="password" id="password" name="password" class="form-control" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Войти</button>
+                    </form>
+                    <div class="text-center mt-3">
+                        <a href="{{ url_for('register') }}">Зарегистрироваться</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
