@@ -1,0 +1,81 @@
+/* Общий фон страницы */
+body {
+    background-color: #f4f8fb; /* Светло-голубой фон */
+    color: #333; /* Темно-серый текст */
+    font-family: Arial, sans-serif;
+}
+
+/* Навигационная панель */
+.navbar {
+    background-color: #dde7f0; /* Голубовато-серый фон навбара */
+    border-bottom: 1px solid #cbd6e2; /* Легкая рамка */
+}
+
+.navbar-brand, .nav-link {
+    color: #333 !important; /* Темно-серый цвет ссылок */
+}
+
+.navbar-brand:hover, .nav-link:hover {
+    color: #0056b3 !important; /* Яркий синий при наведении */
+}
+
+/* Карточки */
+.card {
+    background-color: #ffffff; /* Белый фон */
+    border: 1px solid #d0dce6; /* Голубовато-серая рамка */
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1); /* Небольшая тень */
+    border-radius: 8px; /* Закругленные углы */
+}
+
+.card-title {
+    color: #0056b3; /* Яркий синий для заголовков */
+}
+
+.card-body {
+    color: #555; /* Средне-серый текст */
+}
+
+/* Кнопки */
+button, .btn {
+    background-color: #0056b3; /* Синий фон кнопок */
+    color: #ffffff; /* Белый текст */
+    border: none;
+    border-radius: 4px;
+    transition: background-color 0.3s;
+}
+
+button:hover, .btn:hover {
+    background-color: #004085; /* Темный синий при наведении */
+}
+
+/* Блок авторизации */
+.form-label {
+    color: #333; /* Темно-серый цвет текста */
+}
+
+input.form-control {
+    border: 1px solid #cbd6e2; /* Голубовато-серая рамка */
+    border-radius: 4px;
+}
+
+input.form-control:focus {
+    border-color: #0056b3; /* Синий акцент при фокусе */
+    box-shadow: 0 0 5px rgba(0, 86, 179, 0.5);
+}
+
+/* Футер */
+footer {
+    background-color: #dde7f0; /* Голубовато-серый фон */
+    color: #555; /* Средне-серый текст */
+    text-align: center;
+    padding: 10px;
+    border-top: 1px solid #cbd6e2; /* Рамка сверху */
+    margin-top: 20px;
+}
+
+/* Адаптивный дизайн */
+@media (max-width: 768px) {
+    .navbar {
+        text-align: center;
+    }
+}
