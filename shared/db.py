@@ -31,5 +31,5 @@ class Database:
             raise HTTPException(status_code=500, detail="Database query failed")
 
 
-# Экземпляр базы данных с DSN
-db = Database(dsn="postgresql://postgres:admin@localhost/rip")
+# Экземпляр базы данных с DSN для пользователя web_site и пароля RiP
+db = Database(dsn="postgresql://web_site:RiP@localhost/rip")
