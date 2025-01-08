@@ -25,20 +25,13 @@ app.add_middleware(
 )
 
 # Модель для мемориальной страницы
-class BiographyHeading(BaseModel):
-    order_heading: int
-    name_heading: str
-    content: str
-
-
-# Модель для мемориальной страницы
 class MemorialPage(BaseModel):
     first_name: str
     middle_name: str = None
     last_name: str
     birth_date: str
     death_date: str
-    biography: list[BiographyHeading] = [BiographyHeading]
+    biography: str = None
     public: bool
 
     @model_validator(mode="after")
@@ -94,33 +87,15 @@ async def create_memorial_page(page: MemorialPage, user_id: int = Depends(get_cu
             raise HTTPException(status_code=400, detail="Дата смерти раньше даты рождения")
         
         query = """
-        INSERT INTO memory_pages_human (first_name, middle_name, last_name, birth_date, death_date, public, user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, public;
+        INSERT INTO memory_pages_human (first_name, middle_name, last_name, birth_date, death_date, biography, public, user_id)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, biography, public;
         """
-        values = (page.first_name, page.middle_name, page.last_name, birth_date, death_date, page.public, user_id)
-        result_page = await db.execute_query(query, values)
-
-        result = dict(result_page[0])
-        result["biography"] = []
-
-        for row in page.biography:
-            if row is not None:
-                query = """
-                INSERT INTO headlines_biography (name_heading, order_heading, content, id_memory_page)
-                VALUES ($1, $2, $3, $4)
-                RETURNING id_heading, name_heading, order_heading, content, id_memory_page;
-                """
-                values = (row.name_heading, row.order_heading, row.content, dict(result_page[0])['id_memory_page'])
-                # result_head.append(await db.execute_query(query, values))
-                result_head = await db.execute_query(query, values)
-                result["biography"].append(dict(result_head[0]))
-
-        print(result)
-        
+        values = (page.first_name, page.middle_name, page.last_name, birth_date, death_date, page.biography, page.public, user_id)
+        result = await db.execute_query(query, values)
 
         if result:
-            return {"message": "Memorial page created successfully", "page": result}
+            return {"message": "Memorial page created successfully", "page": dict(result[0])}
         else:
             raise HTTPException(status_code=400, detail="Failed to create memorial page")
     except HTTPException as e:
@@ -181,49 +156,17 @@ async def get_public_memorial_page(page_id: int):
     """
     try:
         query = """
-        SELECT mph.id_memory_page, mph.first_name, mph.middle_name, mph.last_name, mph.birth_date, mph.death_date, mph.public,
-            hb.id_heading, hb.name_heading, hb.order_heading, hb.content
-        FROM memory_pages_human AS mph
-        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = mph.id_memory_page
-        WHERE mph.id_memory_page = $1 AND mph.public = TRUE
-        ORDER BY hb.order_heading;
+        SELECT id_memory_page, first_name, middle_name, last_name, birth_date, death_date, biography, public
+        FROM memory_pages_human
+        WHERE id_memory_page = $1 AND public = TRUE;
         """
         values = (page_id,)
         result = await db.execute_query(query, values)
 
-        if not result:
+        if result:
+            return {"page": dict(result[0])}
+        else:
             raise HTTPException(status_code=404, detail="Public memorial page not found")
-        
-        # Построение структуры JSON
-        page_data = None
-        biography = []
-
-        for row in result:
-            if page_data is None:
-                # Основная информация о странице памяти
-                page_data = {
-                    "first_name": row["first_name"],
-                    "middle_name": row["middle_name"],
-                    "last_name": row["last_name"],
-                    "birth_date": row["birth_date"],
-                    "death_date": row["death_date"],
-                    "public": row["public"],
-                    "biography": []
-                }
-            
-            # Добавляем биографические заголовки (если есть)
-            if row["id_heading"] is not None:
-                biography.append({
-                    "order_heading": row["order_heading"],
-                    "name_heading": row["name_heading"],
-                    "content": row["content"]
-                })
-        
-        # Добавляем биографию в структуру
-        page_data["biography"] = biography
-
-        return {"page": page_data}
-    
     except Exception as e:
         print(f"Error fetching public memorial page: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
@@ -232,53 +175,22 @@ async def get_public_memorial_page(page_id: int):
 # Получить мемориальную страницу, созданную текущим пользователем
 @app.get("/memorial_page/user/{page_id}")
 async def get_user_memorial_page(page_id: int, user_id: int = Depends(get_current_user)):
-
+    """
+    Эндпоинт возвращает мемориальную страницу, созданную текущим пользователем, по её ID.
+    """
     try:
         query = """
-        SELECT mph.id_memory_page, mph.first_name, mph.middle_name, mph.last_name, mph.birth_date, mph.death_date, mph.public,
-            hb.id_heading, hb.name_heading, hb.order_heading, hb.content
-        FROM memory_pages_human AS mph
-        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = mph.id_memory_page
-        WHERE mph.id_memory_page = $1 AND mph.user_id = $2
-        ORDER BY hb.order_heading;
+        SELECT id_memory_page, first_name, middle_name, last_name, birth_date, death_date, biography, public
+        FROM memory_pages_human
+        WHERE id_memory_page = $1 AND user_id = $2;
         """
         values = (page_id, user_id)
         result = await db.execute_query(query, values)
 
-
-        if not result:
+        if result:
+            return {"page": dict(result[0])}
+        else:
             raise HTTPException(status_code=404, detail="User's memorial page not found")
-        
-        # Построение структуры JSON
-        page_data = None
-        biography = []
-
-        for row in result:
-            if page_data is None:
-                # Основная информация о странице памяти
-                page_data = {
-                    "first_name": row["first_name"],
-                    "middle_name": row["middle_name"],
-                    "last_name": row["last_name"],
-                    "birth_date": row["birth_date"],
-                    "death_date": row["death_date"],
-                    "public": row["public"],
-                    "biography": []
-                }
-            
-            # Добавляем биографические заголовки (если есть)
-            if row["id_heading"] is not None:
-                biography.append({
-                    "order_heading": row["order_heading"],
-                    "name_heading": row["name_heading"],
-                    "content": row["content"]
-                })
-        
-        # Добавляем биографию в структуру
-        page_data["biography"] = biography
-
-        return {"page": page_data}
-
     except Exception as e:
         print(f"Error fetching user's memorial page: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
