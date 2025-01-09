@@ -34,13 +34,14 @@ class BiographyHeading(BaseModel):
 
 # Модель для мемориальной страницы
 class MemorialPage(BaseModel):
+    public: bool
     first_name: str
     middle_name: str = None
     last_name: str
+    gender: str
     birth_date: str
     death_date: str
     biography: list[BiographyHeading] = [BiographyHeading]
-    public: bool
 
     @model_validator(mode="after")
     def validate_dates(cls, values):
@@ -155,11 +156,19 @@ async def create_memorial_page(page: MemorialPage, user_id: int = Depends(get_cu
             raise HTTPException(status_code=400, detail="Дата смерти раньше даты рождения")
         
         query = """
-        INSERT INTO memory_pages_human (first_name, middle_name, last_name, birth_date, death_date, public, user_id)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, public;
+        INSERT INTO person (is_memory_page, public, first_name, middle_name, last_name, gender, birth_date, death_date, user_id)
+        VALUES (True, $1, $2, $3, $4, $5, $6, $7, $8)
+        RETURNING id_person, is_memory_page, public, first_name, middle_name, last_name, gender, birth_date, death_date;
         """
-        values = (page.first_name, page.middle_name, page.last_name, birth_date, death_date, page.public, user_id)
+        values = (page.public, 
+            page.first_name, 
+            page.middle_name, 
+            page.last_name,
+            page.gender,
+            birth_date, 
+            death_date,
+            user_id)
+
         result_page = await db.execute_query(query, values)
 
         result = dict(result_page[0])
@@ -172,7 +181,7 @@ async def create_memorial_page(page: MemorialPage, user_id: int = Depends(get_cu
                 VALUES ($1, $2, $3, $4)
                 RETURNING id_heading, name_heading, order_heading, content, id_memory_page;
                 """
-                values = (row.name_heading, row.order_heading, row.content, dict(result_page[0])['id_memory_page'])
+                values = (row.name_heading, row.order_heading, row.content, dict(result_page[0])['id_person'])
 
                 result_head = await db.execute_query(query, values)
                 result["biography"].append(dict(result_head[0]))
@@ -193,10 +202,10 @@ async def create_memorial_page(page: MemorialPage, user_id: int = Depends(get_cu
 async def get_public_memorial_pages():
     try:
         query = """
-        SELECT id_memory_page, first_name, middle_name, last_name, birth_date, death_date
-        FROM memory_pages_human
-        WHERE public = TRUE
-        ORDER BY id_memory_page;;
+        SELECT id_person, first_name, middle_name, last_name, birth_date, death_date
+        FROM person
+        WHERE public = TRUE AND is_memory_page = TRUE
+        ORDER BY id_person;
         """
         result = await db.execute_query(query)
 
@@ -214,10 +223,10 @@ async def get_public_memorial_pages():
 async def get_user_memorial_pages(user_id: int = Depends(get_current_user)):
     try:
         query = """
-        SELECT id_memory_page, first_name, middle_name, last_name, birth_date, death_date, public
-        FROM memory_pages_human
-        WHERE user_id = $1
-        ORDER BY id_memory_page;
+        SELECT public, id_person, first_name, middle_name, last_name, birth_date, death_date
+        FROM person
+        WHERE user_id = $1 AND is_memory_page = TRUE
+        ORDER BY id_person;
         """
         values = (user_id,)
         result = await db.execute_query(query, values)
@@ -234,20 +243,19 @@ async def get_user_memorial_pages(user_id: int = Depends(get_current_user)):
 # Получить публичную мемориальную страницу
 @app.get("/memorial_page/public/{page_id}")
 async def get_public_memorial_page(page_id: int):
-    """
-    Эндпоинт возвращает публичную мемориальную страницу по её ID.
-    """
     try:
         query = """
-        SELECT mph.id_memory_page, mph.first_name, mph.middle_name, mph.last_name, mph.birth_date, mph.death_date, mph.public,
+        SELECT p.public, p.id_person, p.first_name, p.middle_name, p.last_name, p.gender, p.birth_date, p.death_date,
             hb.id_heading, hb.name_heading, hb.order_heading, hb.content
-        FROM memory_pages_human AS mph
-        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = mph.id_memory_page
-        WHERE mph.id_memory_page = $1 AND mph.public = TRUE
+        FROM person AS p
+        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = p.id_person
+        WHERE p.id_person = $1 AND p.public = TRUE AND is_memory_page = TRUE
         ORDER BY hb.order_heading;
         """
         values = (page_id,)
         result = await db.execute_query(query, values)
+
+        print(result)
 
         if not result:
             raise HTTPException(status_code=404, detail="Public memorial page not found")
@@ -260,9 +268,12 @@ async def get_public_memorial_page(page_id: int):
             if page_data is None:
                 # Основная информация о странице памяти
                 page_data = {
+                    "public": row["public"],
+                    "id_person": row["id_person"],
                     "first_name": row["first_name"],
                     "middle_name": row["middle_name"],
                     "last_name": row["last_name"],
+                    "gender": row["gender"],
                     "birth_date": row["birth_date"],
                     "death_date": row["death_date"],
                     "public": row["public"],
@@ -272,6 +283,7 @@ async def get_public_memorial_page(page_id: int):
             # Добавляем биографические заголовки (если есть)
             if row["id_heading"] is not None:
                 biography.append({
+                    "id_heading": row["id_heading"],
                     "order_heading": row["order_heading"],
                     "name_heading": row["name_heading"],
                     "content": row["content"]
@@ -293,11 +305,11 @@ async def get_user_memorial_page(page_id: int, user_id: int = Depends(get_curren
 
     try:
         query = """
-        SELECT mph.id_memory_page, mph.first_name, mph.middle_name, mph.last_name, mph.birth_date, mph.death_date, mph.public,
+        SELECT p.public, p.id_person, p.first_name, p.middle_name, p.last_name, p.gender, p.birth_date, p.death_date,
             hb.id_heading, hb.name_heading, hb.order_heading, hb.content
-        FROM memory_pages_human AS mph
-        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = mph.id_memory_page
-        WHERE mph.id_memory_page = $1 AND mph.user_id = $2
+        FROM person AS p
+        INNER JOIN headlines_biography AS hb ON hb.id_memory_page = p.id_person
+        WHERE p.id_person = $1 AND p.user_id = $2 AND p.is_memory_page = TRUE
         ORDER BY hb.order_heading;
         """
         values = (page_id, user_id)
@@ -315,9 +327,12 @@ async def get_user_memorial_page(page_id: int, user_id: int = Depends(get_curren
             if page_data is None:
                 # Основная информация о странице памяти
                 page_data = {
+                    "public": row["public"],
+                    "id_person": row["id_person"],
                     "first_name": row["first_name"],
                     "middle_name": row["middle_name"],
                     "last_name": row["last_name"],
+                    "gender": row["gender"],
                     "birth_date": row["birth_date"],
                     "death_date": row["death_date"],
                     "public": row["public"],
@@ -327,6 +342,7 @@ async def get_user_memorial_page(page_id: int, user_id: int = Depends(get_curren
             # Добавляем биографические заголовки (если есть)
             if row["id_heading"] is not None:
                 biography.append({
+                    "id_heading": row["id_heading"],
                     "order_heading": row["order_heading"],
                     "name_heading": row["name_heading"],
                     "content": row["content"]
@@ -351,18 +367,19 @@ async def update_memorial_page(page_id: int, page: MemorialPage, user_id: int = 
         death_date = parse_date(page.death_date)
 
         query = """
-        UPDATE memory_pages_human
-        SET first_name = $1, middle_name = $2, last_name = $3, birth_date = $4, death_date = $5, public = $6
-        WHERE id_memory_page = $7 AND user_id = $8
-        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, public;
+        UPDATE person
+        SET public = $1, first_name = $2, middle_name = $3, last_name = $4, gender = $5, birth_date = $6, death_date = $7
+        WHERE id_person = $8 AND user_id = $9 AND is_memory_page = TRUE
+        RETURNING id_person, first_name, middle_name, last_name, gender, birth_date, death_date, public;
         """
         values = (
+            page.public,
             page.first_name,
             page.middle_name,
             page.last_name,
+            page.gender,
             birth_date,
             death_date,
-            page.public,
             page_id,
             user_id,
         )
@@ -376,8 +393,6 @@ async def update_memorial_page(page_id: int, page: MemorialPage, user_id: int = 
         
         # ВЫВОД ТАБЛИЦЫ ДЕЙСТВИЙ ДЛЯ ЗАГОЛОВКА
         query, values, bio_dict = get_chek_action(page_id, page)
-
-        print("dsg")
 
         if query is not None:
             result_chek_action = await db.execute_query(query, values)
