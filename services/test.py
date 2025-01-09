@@ -1,7 +1,3 @@
-import asyncio
-import sys
-import os
-import httpx
-import jwt
-
-encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+arr = [1,2,4]
+res = "".join('(' + str(i) + '), ' for i in arr)[:-2]
+print(res)

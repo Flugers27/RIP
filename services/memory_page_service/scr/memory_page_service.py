@@ -26,6 +26,7 @@ app.add_middleware(
 
 # Модель для мемориальной страницы
 class BiographyHeading(BaseModel):
+    id_heading: int
     order_heading: int
     name_heading: str
     content: str
@@ -73,6 +74,66 @@ def parse_date(date_str: str):
             detail=f"Invalid date format for '{date_str}'. Use YYYY-MM-DD.",
         )
 
+# Функция проверки изменения зоголовков
+def get_chek_action(page_id: int, page: MemorialPage):
+
+    if page.biography == []:
+        query = """
+        SELECT id_heading,  'delete' AS action 
+        FROM public.headlines_biography
+        WHERE id_memory_page = $1 
+        """
+        values = (page_id,)
+
+        return (query,values,{})
+    
+    else:
+
+        bio_dict = {'id_heading' : [],
+                'id_heading_str_list' : [],
+                'id_heading_str_data' : [],
+                'order_heading' : [],
+                'name_heading' : [],
+                'content' : []}
+        
+
+        for head in page.biography:
+            bio_dict['id_heading'].append(head.id_heading)
+            bio_dict['order_heading'].append(head.order_heading)
+            bio_dict['name_heading'].append(head.name_heading)
+            bio_dict['content'].append(head.content)
+
+            bio_dict['id_heading_str_list'].append(str(head.id_heading))
+            bio_dict['id_heading_str_data'].append('(' + str(head.id_heading) + ')')
+
+
+        bio_dict['id_heading_str_list'] = ", ".join(bio_dict['id_heading_str_list'])
+        bio_dict['id_heading_str_data'] = ", ".join(bio_dict['id_heading_str_data'])
+
+        query = """
+        SELECT id_heading,  'delete' AS action 
+        FROM public.headlines_biography
+        WHERE id_memory_page = $1 AND (id_heading not in ("""+ bio_dict['id_heading_str_list'] +"""))
+
+        UNION 
+        SELECT arr.id_heading, 'insert' AS action 
+        FROM (values """+ bio_dict['id_heading_str_data'] +""" ) AS arr(id_heading)
+        LEFT JOIN public.headlines_biography AS hb 
+        ON hb.id_heading = arr.id_heading
+        WHERE hb.id_heading IS NULL
+
+        UNION 
+        SELECT id_heading,  'update' AS action 
+        FROM public.headlines_biography
+        WHERE id_memory_page = $1 AND (id_heading in ("""+ bio_dict['id_heading_str_list'] +"""))
+        ORDER BY id_heading;
+        """
+        values = (page_id,)
+
+        return (query,values,bio_dict)
+
+
+
 @app.on_event("startup")
 async def startup():
     await db.connect()  # Инициализация подключения к базе данных
@@ -112,12 +173,9 @@ async def create_memorial_page(page: MemorialPage, user_id: int = Depends(get_cu
                 RETURNING id_heading, name_heading, order_heading, content, id_memory_page;
                 """
                 values = (row.name_heading, row.order_heading, row.content, dict(result_page[0])['id_memory_page'])
-                # result_head.append(await db.execute_query(query, values))
+
                 result_head = await db.execute_query(query, values)
                 result["biography"].append(dict(result_head[0]))
-
-        print(result)
-        
 
         if result:
             return {"message": "Memorial page created successfully", "page": result}
@@ -294,9 +352,9 @@ async def update_memorial_page(page_id: int, page: MemorialPage, user_id: int = 
 
         query = """
         UPDATE memory_pages_human
-        SET first_name = $1, middle_name = $2, last_name = $3, birth_date = $4, death_date = $5, biography = $6, public = $7
-        WHERE id_memory_page = $8 AND user_id = $9
-        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, biography, public;
+        SET first_name = $1, middle_name = $2, last_name = $3, birth_date = $4, death_date = $5, public = $6
+        WHERE id_memory_page = $7 AND user_id = $8
+        RETURNING id_memory_page, first_name, middle_name, last_name, birth_date, death_date, public;
         """
         values = (
             page.first_name,
@@ -304,15 +362,102 @@ async def update_memorial_page(page_id: int, page: MemorialPage, user_id: int = 
             page.last_name,
             birth_date,
             death_date,
-            page.biography,
             page.public,
             page_id,
             user_id,
         )
-        result = await db.execute_query(query, values)
+        
+        result_page = await db.execute_query(query, values)
+        result = dict(result_page[0])
+        result["biography"] = []
+
+        if not result_page:
+            raise HTTPException(status_code=404, detail="User's memorial page not found")
+        
+        # ВЫВОД ТАБЛИЦЫ ДЕЙСТВИЙ ДЛЯ ЗАГОЛОВКА
+        query, values, bio_dict = get_chek_action(page_id, page)
+
+        print("dsg")
+
+        if query is not None:
+            result_chek_action = await db.execute_query(query, values)
+
+            # print(result_chek_action)
+            for  head in result_chek_action:
+                head = dict(head)
+                
+                # UPDATE
+                if head["action"] == "update":
+                    # print("update")
+                    index =  bio_dict['id_heading'].index(head["id_heading"])
+
+                    query = """
+                    UPDATE headlines_biography
+                    SET order_heading = $1, name_heading = $2, content = $3
+                    WHERE id_heading = $4 AND id_memory_page = $5
+                    RETURNING id_heading, order_heading, name_heading, content, id_memory_page;
+                    """
+                    values = (
+                        bio_dict['order_heading'][index],
+                        bio_dict['name_heading'][index],
+                        bio_dict['content'][index],
+                        head["id_heading"],
+                        page_id,
+                    )
+                    
+                    result_action = await db.execute_query(query, values)
+                    result_action = dict(result_action[0])
+                    result_action['action'] = "update"
+
+                    result["biography"].append(result_action)
+                    #print(result_action)
+                
+                # DELETE
+                elif head["action"] == "delete":
+                    # print("delete")
+
+                    query = """
+                    DELETE FROM headlines_biography 
+                    WHERE id_memory_page = $1 AND id_heading = $2 
+                    RETURNING id_heading;
+                    """
+                    values = (page_id, head["id_heading"])
+
+                    result_action = await db.execute_query(query, values)
+                    result_action = dict(result_action[0])
+                    result_action['action'] = "delete"
+
+                    result["biography"].append(result_action)
+                    #print(result_action)
+
+                # INSERT
+                elif head["action"]== "insert":
+                    # print("insert")
+                    index =  bio_dict['id_heading'].index(head["id_heading"])
+
+                    query = """
+                    INSERT INTO headlines_biography (order_heading, name_heading, content, id_memory_page)
+                    VALUES ($1, $2, $3, $4)
+                    RETURNING id_heading, order_heading, name_heading, content, id_memory_page;
+                    """
+                    values = (
+                        bio_dict['order_heading'][index],
+                        bio_dict['name_heading'][index],
+                        bio_dict['content'][index],
+                        page_id,)
+                    
+                    result_action = await db.execute_query(query, values)
+                    result_action = dict(result_action[0])
+                    result_action['action'] = "insert"
+
+                    result["biography"].append(result_action)
+                    #print(result_action)
+
+                if not result_action:
+                    raise HTTPException(status_code=404, detail="Headers memorial page not found")
 
         if result:
-            return {"message": "Memorial page updated successfully", "page": dict(result[0])}
+            return {"message": "Memorial page updated successfully", "page": result}
         else:
             raise HTTPException(status_code=404, detail="Memorial page not found or unauthorized")
     except Exception as e:
