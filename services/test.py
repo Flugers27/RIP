@@ -26,23 +26,27 @@ class Node:
 
 
 # Функция для обхода дерева по ширине
-def breadth_first_traversal_with_levels(root):
-    # print('+++++++++++++++++++++')
+def breadth_first_traversal_with_levels(root, search):
+    print('+++++++++++++++++++++')
     if not root:
         return []
 
     queue = [(root, 0)]  # Очередь: (узел, уровень)
+    step = 0
     result = []  # Список для хранения результата
     res = {}  # Список для хранения результата
+    res_serch = {}
 
     visited = set()  # Для отслеживания посещенных узлов (чтобы избежать бесконечных циклов)
+    # visited.add(root.value)
 
     while queue:
         node, level = queue.pop(0)
-        # print("1. {} {} {}".format(node.value, level, visited))
+        print("1. {} {} {}".format(node.value, level, visited))
 
         # Если узел уже обработан, пропускаем его
         if node.value in visited:
+            print('+++++++++++++++++++++')
             continue
             
         # Добавляем узел в результат
@@ -52,19 +56,34 @@ def breadth_first_traversal_with_levels(root):
 
         result.append((node.value, level))
         visited.add(node.value)
-        # print("2. {} {} {}".format(node.value, level, visited))
+        print("2. {} {} {}".format(node.value, level, visited))
+
+        if node.value == search.value:
+            res_serch['id'] = node.value
+            res_serch['level'] = level
+            res_serch['step'] = step
 
         # Добавляем родителей узла в очередь с уровнем +1
         for parent in node.parents:
+
+            if parent.value in visited:
+                continue
+            # visited.add(parent.value)
             queue.append((parent, level + 1))
-            # print("3. {} {}".format(parent.value,level + 1))
+            print("3.1 {} {}".format(parent.value,level + 1))
 
         # Добавляем детей узла в очередь с уровнем -1
         for child in node.children:
+
+            if child.value in visited:
+                continue
+            # visited.add(child.value)
             queue.append((child, level - 1))
-            # print("3. {} {}".format(child.value,level - 1))
-    # print('+++++++++++++++++++++')
-    return result,res
+            print("3.2 {} {}".format(child.value,level - 1))
+
+        print('+++++++++++++++++++++')
+        step +=1
+    return result,res,res_serch
 
 
 # Создание дерева с добавлением узла "H" как ребенка B и C assign_relation
@@ -125,8 +144,9 @@ z,x,v = c.get_par()
 print("Узел - {}, родители - {}, дети - {}".format(z,x,v))
 
 # Вывод обхода по ширине с уровнями
-result,res = breadth_first_traversal_with_levels(root)
+result,res,res_serch = breadth_first_traversal_with_levels(root,k)
 print(result)
 print(res)
+print(res_serch)
 # for value, level in result:
 #     print(f"{value} {level}")
